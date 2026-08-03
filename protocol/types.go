@@ -1,8 +1,10 @@
 // Package protocol defines the iLink Bot wire shapes (JSON over HTTP).
-// These types mirror the WeixinMessage / CGI contracts used by the bot platform.
+//
+// Types are pure wire mirrors of the WeixinMessage / CGI contracts. Field
+// comments note only non-obvious protocol quirks (e.g. key encodings).
 package protocol
 
-// Default endpoints (relative to bot base URL, which must end with / or be joined carefully).
+// Path* are CGI paths relative to the bot base URL.
 const (
 	PathGetUpdates   = "ilink/bot/getupdates"
 	PathSendMessage  = "ilink/bot/sendmessage"
@@ -13,20 +15,20 @@ const (
 	PathNotifyStop   = "ilink/bot/msg/notifystop"
 )
 
-// Auth header values required by iLink bot CGI.
+// AuthorizationTypeILinkBotToken is the AuthorizationType header value for bot CGI.
 const (
 	AuthorizationTypeILinkBotToken = "ilink_bot_token"
 )
 
-// Message / item enums (proto-aligned numbers).
+// Wire enums (proto-aligned numbers) for message, item, media, and typing.
 const (
 	MessageTypeNone = 0
 	MessageTypeUser = 1
 	MessageTypeBot  = 2
 
-	MessageStateNew         = 0
-	MessageStateGenerating  = 1
-	MessageStateFinish      = 2
+	MessageStateNew        = 0
+	MessageStateGenerating = 1
+	MessageStateFinish     = 2
 
 	ItemTypeNone           = 0
 	ItemTypeText           = 1
@@ -63,10 +65,12 @@ type CDNMedia struct {
 	FullURL           string `json:"full_url,omitempty"`
 }
 
+// TextItem is a wire text payload.
 type TextItem struct {
 	Text string `json:"text,omitempty"`
 }
 
+// ImageItem is a wire image payload.
 type ImageItem struct {
 	Media      *CDNMedia `json:"media,omitempty"`
 	ThumbMedia *CDNMedia `json:"thumb_media,omitempty"`
@@ -77,6 +81,7 @@ type ImageItem struct {
 	HDSize     int       `json:"hd_size,omitempty"`
 }
 
+// VoiceItem is a wire voice payload.
 type VoiceItem struct {
 	Media         *CDNMedia `json:"media,omitempty"`
 	EncodeType    int       `json:"encode_type,omitempty"`
@@ -86,6 +91,7 @@ type VoiceItem struct {
 	Text          string    `json:"text,omitempty"`
 }
 
+// FileItem is a wire file attachment payload.
 type FileItem struct {
 	Media    *CDNMedia `json:"media,omitempty"`
 	FileName string    `json:"file_name,omitempty"`
@@ -93,6 +99,7 @@ type FileItem struct {
 	Len      string    `json:"len,omitempty"`
 }
 
+// VideoItem is a wire video payload.
 type VideoItem struct {
 	Media       *CDNMedia `json:"media,omitempty"`
 	VideoSize   int       `json:"video_size,omitempty"`
@@ -104,22 +111,26 @@ type VideoItem struct {
 	ThumbWidth  int       `json:"thumb_width,omitempty"`
 }
 
+// RefMessage is a quoted/referenced message on the wire.
 type RefMessage struct {
 	MessageItem *MessageItem `json:"message_item,omitempty"`
 	Title       string       `json:"title,omitempty"`
 }
 
+// ToolCallStartItem is a wire tool-call start progress item.
 type ToolCallStartItem struct {
 	ToolName   string `json:"tool_name,omitempty"`
 	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
+// ToolCallResultItem is a wire tool-call result progress item.
 type ToolCallResultItem struct {
 	ToolName   string `json:"tool_name,omitempty"`
 	ToolCallID string `json:"tool_call_id,omitempty"`
 	Status     string `json:"status,omitempty"`
 }
 
+// MessageItem is one content unit inside a WeixinMessage item_list.
 type MessageItem struct {
 	Type               int                 `json:"type,omitempty"`
 	CreateTimeMs       int64               `json:"create_time_ms,omitempty"`
@@ -138,48 +149,51 @@ type MessageItem struct {
 
 // WeixinMessage is the unified message envelope on the wire.
 type WeixinMessage struct {
-	Seq           int64          `json:"seq,omitempty"`
-	MessageID     int64          `json:"message_id,omitempty"`
-	FromUserID    string         `json:"from_user_id,omitempty"`
-	ToUserID      string         `json:"to_user_id,omitempty"`
-	ClientID      string         `json:"client_id,omitempty"`
-	CreateTimeMs  int64          `json:"create_time_ms,omitempty"`
-	UpdateTimeMs  int64          `json:"update_time_ms,omitempty"`
-	SessionID     string         `json:"session_id,omitempty"`
-	GroupID       string         `json:"group_id,omitempty"`
-	MessageType   int            `json:"message_type,omitempty"`
-	MessageState  int            `json:"message_state,omitempty"`
-	ItemList      []MessageItem  `json:"item_list,omitempty"`
-	ContextToken  string         `json:"context_token,omitempty"`
-	RunID         string         `json:"run_id,omitempty"`
+	Seq          int64         `json:"seq,omitempty"`
+	MessageID    int64         `json:"message_id,omitempty"`
+	FromUserID   string        `json:"from_user_id,omitempty"`
+	ToUserID     string        `json:"to_user_id,omitempty"`
+	ClientID     string        `json:"client_id,omitempty"`
+	CreateTimeMs int64         `json:"create_time_ms,omitempty"`
+	UpdateTimeMs int64         `json:"update_time_ms,omitempty"`
+	SessionID    string        `json:"session_id,omitempty"`
+	GroupID      string        `json:"group_id,omitempty"`
+	MessageType  int           `json:"message_type,omitempty"`
+	MessageState int           `json:"message_state,omitempty"`
+	ItemList     []MessageItem `json:"item_list,omitempty"`
+	ContextToken string        `json:"context_token,omitempty"`
+	RunID        string        `json:"run_id,omitempty"`
 }
 
-// --- CGI request/response bodies ---
-
+// GetUpdatesReq is the getupdates request body.
 type GetUpdatesReq struct {
 	GetUpdatesBuf string    `json:"get_updates_buf"`
 	BaseInfo      *BaseInfo `json:"base_info,omitempty"`
 }
 
+// GetUpdatesResp is the getupdates response body.
 type GetUpdatesResp struct {
-	Ret                   int             `json:"ret,omitempty"`
-	ErrCode               int             `json:"errcode,omitempty"`
-	ErrMsg                string          `json:"errmsg,omitempty"`
-	Msgs                  []WeixinMessage `json:"msgs,omitempty"`
-	GetUpdatesBuf         string          `json:"get_updates_buf,omitempty"`
-	LongPollingTimeoutMs  int             `json:"longpolling_timeout_ms,omitempty"`
+	Ret                  int             `json:"ret,omitempty"`
+	ErrCode              int             `json:"errcode,omitempty"`
+	ErrMsg               string          `json:"errmsg,omitempty"`
+	Msgs                 []WeixinMessage `json:"msgs,omitempty"`
+	GetUpdatesBuf        string          `json:"get_updates_buf,omitempty"`
+	LongPollingTimeoutMs int             `json:"longpolling_timeout_ms,omitempty"`
 }
 
+// SendMessageReq is the sendmessage request body.
 type SendMessageReq struct {
 	Msg      *WeixinMessage `json:"msg,omitempty"`
 	BaseInfo *BaseInfo      `json:"base_info,omitempty"`
 }
 
+// SendMessageResp is the sendmessage response body.
 type SendMessageResp struct {
 	Ret    int    `json:"ret,omitempty"`
 	ErrMsg string `json:"errmsg,omitempty"`
 }
 
+// GetUploadURLReq is the getuploadurl request body.
 type GetUploadURLReq struct {
 	FileKey         string    `json:"filekey,omitempty"`
 	MediaType       int       `json:"media_type,omitempty"`
@@ -195,24 +209,28 @@ type GetUploadURLReq struct {
 	BaseInfo        *BaseInfo `json:"base_info,omitempty"`
 }
 
+// GetUploadURLResp is the getuploadurl response body.
 type GetUploadURLResp struct {
 	UploadParam      string `json:"upload_param,omitempty"`
 	ThumbUploadParam string `json:"thumb_upload_param,omitempty"`
 	UploadFullURL    string `json:"upload_full_url,omitempty"`
 }
 
+// GetConfigReq is the getconfig request body.
 type GetConfigReq struct {
 	ILinkUserID  string    `json:"ilink_user_id,omitempty"`
 	ContextToken string    `json:"context_token,omitempty"`
 	BaseInfo     *BaseInfo `json:"base_info,omitempty"`
 }
 
+// GetConfigResp is the getconfig response body.
 type GetConfigResp struct {
 	Ret          int    `json:"ret,omitempty"`
 	ErrMsg       string `json:"errmsg,omitempty"`
 	TypingTicket string `json:"typing_ticket,omitempty"`
 }
 
+// SendTypingReq is the sendtyping request body.
 type SendTypingReq struct {
 	ILinkUserID  string    `json:"ilink_user_id,omitempty"`
 	TypingTicket string    `json:"typing_ticket,omitempty"`
@@ -220,10 +238,12 @@ type SendTypingReq struct {
 	BaseInfo     *BaseInfo `json:"base_info,omitempty"`
 }
 
+// NotifyReq is the notifystart/notifystop request body.
 type NotifyReq struct {
 	BaseInfo *BaseInfo `json:"base_info,omitempty"`
 }
 
+// NotifyResp is the notifystart/notifystop response body.
 type NotifyResp struct {
 	Ret    int    `json:"ret,omitempty"`
 	ErrMsg string `json:"errmsg,omitempty"`

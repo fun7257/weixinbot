@@ -88,9 +88,12 @@ type SilkCodec interface {
 // NilSilkCodec always returns errors (degrade path).
 type NilSilkCodec struct{}
 
+// DecodeSilkToPCM always fails so callers can exercise degrade paths.
 func (NilSilkCodec) DecodeSilkToPCM([]byte) ([]byte, int, error) {
 	return nil, 0, fmt.Errorf("media: silk decoder not available")
 }
+
+// EncodePCMToSilk always fails so callers can exercise degrade paths.
 func (NilSilkCodec) EncodePCMToSilk([]byte, int) ([]byte, error) {
 	return nil, fmt.Errorf("media: silk encoder not available")
 }

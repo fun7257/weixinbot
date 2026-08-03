@@ -221,7 +221,8 @@ func DecodeJSON(body []byte, dst any) error {
 	return json.Unmarshal(body, dst)
 }
 
-// MustJSON is like DecodeJSON but panics on error (test helper).
+// MustJSON is like DecodeJSON but panics on error.
+// Panic is intentional for test helpers only; production packages must not use this.
 func MustJSON(body []byte, dst any) {
 	if err := json.Unmarshal(body, dst); err != nil {
 		panic(err)

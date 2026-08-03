@@ -58,7 +58,7 @@ type Config struct {
 
 // Client talks to iLink Bot CGI endpoints.
 type Client struct {
-	cfg Config
+	cfg  Config
 	http Doer
 }
 
@@ -143,6 +143,7 @@ type APIError struct {
 	Status  int
 }
 
+// Error implements the error interface for APIError.
 func (e *APIError) Error() string {
 	if e.Status != 0 && e.Status != http.StatusOK {
 		return fmt.Sprintf("%s: http %d %s", e.Op, e.Status, e.ErrMsg)
@@ -175,6 +176,7 @@ func IsRateLimited(err error) bool {
 	return strings.Contains(msg, "rate limit") || strings.Contains(msg, "rate_limit") || strings.Contains(msg, "ratelimit")
 }
 
+// postJSON marshals body (any for CGI JSON shapes) and POSTs with bot headers.
 func (c *Client) postJSON(ctx context.Context, op, path string, body any, timeout time.Duration) ([]byte, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {

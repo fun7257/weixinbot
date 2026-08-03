@@ -74,11 +74,11 @@ func (s *Store) accountPath(accountID, suffix string) (string, error) {
 
 // Account holds bot credentials persisted after login (or injected in tests).
 type Account struct {
-	Token     string    `json:"token,omitempty"`
-	BaseURL   string    `json:"baseUrl,omitempty"`
-	UserID    string    `json:"userId,omitempty"`
-	CDNBase   string    `json:"cdnBaseUrl,omitempty"`
-	SavedAt   time.Time `json:"savedAt,omitempty"`
+	Token   string    `json:"token,omitempty"`
+	BaseURL string    `json:"baseUrl,omitempty"`
+	UserID  string    `json:"userId,omitempty"`
+	CDNBase string    `json:"cdnBaseUrl,omitempty"`
+	SavedAt time.Time `json:"savedAt,omitempty"`
 }
 
 // Store is a filesystem-backed multi-account state root.
@@ -345,6 +345,7 @@ func (s *Store) writeContextTokensLocked(safeAccountID string) error {
 	return writeJSON(path, m)
 }
 
+// writeJSON atomically writes v as indented JSON (any for account/sync/peer maps).
 func writeJSON(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

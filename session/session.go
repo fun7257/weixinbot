@@ -217,14 +217,14 @@ func (s *Session) Run(ctx context.Context) error {
 	timeout := s.opts.LongPollTimeout
 	for {
 		if err := ctx.Err(); err != nil {
-			_, _ = s.opts.Client.NotifyStop(context.Background())
+			s.notifyStopBestEffort()
 			return err
 		}
 		if wait := s.pauseRemaining(); wait > 0 {
 			s.log.Info("session paused (stale token)", "wait", wait)
 			select {
 			case <-ctx.Done():
-				_, _ = s.opts.Client.NotifyStop(context.Background())
+				s.notifyStopBestEffort()
 				return ctx.Err()
 			case <-time.After(wait):
 			}
@@ -234,13 +234,13 @@ func (s *Session) Run(ctx context.Context) error {
 		resp, err := s.opts.Client.GetUpdates(ctx, buf, timeout)
 		if err != nil {
 			if ctx.Err() != nil {
-				_, _ = s.opts.Client.NotifyStop(context.Background())
+				s.notifyStopBestEffort()
 				return ctx.Err()
 			}
 			s.log.Warn("getUpdates error", "err", err)
 			select {
 			case <-ctx.Done():
-				_, _ = s.opts.Client.NotifyStop(context.Background())
+				s.notifyStopBestEffort()
 				return ctx.Err()
 			case <-time.After(s.opts.RetryDelay):
 			}
@@ -259,7 +259,7 @@ func (s *Session) Run(ctx context.Context) error {
 			s.log.Warn("getUpdates api error", "ret", resp.Ret, "errcode", resp.ErrCode, "errmsg", resp.ErrMsg)
 			select {
 			case <-ctx.Done():
-				_, _ = s.opts.Client.NotifyStop(context.Background())
+				s.notifyStopBestEffort()
 				return ctx.Err()
 			case <-time.After(s.opts.RetryDelay):
 			}
@@ -281,6 +281,12 @@ func (s *Session) Run(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// notifyStopBestEffort calls NotifyStop with a detached context after the
+// session ctx is canceled (best-effort teardown; parent ctx cannot complete I/O).
+func (s *Session) notifyStopBestEffort() {
+	_, _ = s.opts.Client.NotifyStop(context.Background())
 }
 
 func isAPIFailure(resp *protocol.GetUpdatesResp) bool {
@@ -650,8 +656,10 @@ func (s *Session) SendMediaURL(ctx context.Context, toUserID, rawURL, caption st
 	return s.deliverLocalWithReservation(ctx, toUserID, token, &remaining, path, captionChunks)
 }
 
+// rtDoer adapts ilink.Doer to http.RoundTripper for CDN clients.
 type rtDoer struct{ d ilink.Doer }
 
+// RoundTrip implements http.RoundTripper.
 func (r rtDoer) RoundTrip(req *http.Request) (*http.Response, error) { return r.d.Do(req) }
 
 func roundTripperFromDoer(d ilink.Doer) http.RoundTripper {
@@ -949,6 +957,7 @@ func (s *Session) WithTyping(ctx context.Context, userID string, fn func(context
 	err := fn(ctx)
 	cancel()
 	<-done
+	// Detached ctx: typing keepalive was canceled; still try to clear the indicator.
 	_ = s.StopTyping(context.Background(), userID)
 	return err
 }
