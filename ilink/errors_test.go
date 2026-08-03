@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/tencent-weixin/weixinbot/ilink"
-	"github.com/tencent-weixin/weixinbot/protocol"
+	"github.com/fun7257/weixinbot/ilink"
+	"github.com/fun7257/weixinbot/protocol"
 )
 
 func TestIsRateLimitedAndIsStaleToken(t *testing.T) {

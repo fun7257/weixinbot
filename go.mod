@@ -1,4 +1,4 @@
-module github.com/tencent-weixin/weixinbot
+module github.com/fun7257/weixinbot
 
 go 1.22
 

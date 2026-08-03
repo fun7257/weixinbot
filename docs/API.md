@@ -2,7 +2,7 @@
 
 > **语言 / Language:** [中文](./API.md) | [English](./API.en.md)
 
-Module：`github.com/tencent-weixin/weixinbot`  
+Module：`github.com/fun7257/weixinbot`  
 定位：**微信 iLink Bot 通讯库**（非 Agent / OpenClaw / Webhook）。  
 Go：`go 1.22+`（以 `go.mod` 为准）。
 
@@ -49,22 +49,22 @@ Go：`go 1.22+`（以 `go.mod` 为准）。
 ## 1. 安装与依赖
 
 ```bash
-go get github.com/tencent-weixin/weixinbot@latest
+go get github.com/fun7257/weixinbot@latest
 ```
 
 本地开发（example / monorepo）：
 
 ```go
 // go.mod
-replace github.com/tencent-weixin/weixinbot => ../weixinbot
+replace github.com/fun7257/weixinbot => ../weixinbot
 ```
 
 ```go
 import (
-    "github.com/tencent-weixin/weixinbot/auth"
-    "github.com/tencent-weixin/weixinbot/ilink"
-    "github.com/tencent-weixin/weixinbot/session"
-    "github.com/tencent-weixin/weixinbot/state"
+    "github.com/fun7257/weixinbot/auth"
+    "github.com/fun7257/weixinbot/ilink"
+    "github.com/fun7257/weixinbot/session"
+    "github.com/fun7257/weixinbot/state"
     // 按需: media, markdown, protocol
 )
 ```
@@ -98,9 +98,9 @@ import (
     "path/filepath"
     "syscall"
 
-    "github.com/tencent-weixin/weixinbot/ilink"
-    "github.com/tencent-weixin/weixinbot/session"
-    "github.com/tencent-weixin/weixinbot/state"
+    "github.com/fun7257/weixinbot/ilink"
+    "github.com/fun7257/weixinbot/session"
+    "github.com/fun7257/weixinbot/state"
 )
 
 func main() {

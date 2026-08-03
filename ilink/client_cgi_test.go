@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/ilink"
-	"github.com/tencent-weixin/weixinbot/internal/testutil"
-	"github.com/tencent-weixin/weixinbot/protocol"
+	"github.com/fun7257/weixinbot/ilink"
+	"github.com/fun7257/weixinbot/internal/testutil"
+	"github.com/fun7257/weixinbot/protocol"
 )
 
 func newTestClient(ft *testutil.FakeTransport) *ilink.Client {

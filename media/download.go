@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/tencent-weixin/weixinbot/protocol"
+	"github.com/fun7257/weixinbot/protocol"
 )
 
 // LocalMedia is a downloaded/decrypted inbound media attachment.

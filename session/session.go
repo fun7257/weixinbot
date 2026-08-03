@@ -24,11 +24,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/ilink"
-	"github.com/tencent-weixin/weixinbot/markdown"
-	"github.com/tencent-weixin/weixinbot/media"
-	"github.com/tencent-weixin/weixinbot/protocol"
-	"github.com/tencent-weixin/weixinbot/state"
+	"github.com/fun7257/weixinbot/ilink"
+	"github.com/fun7257/weixinbot/markdown"
+	"github.com/fun7257/weixinbot/media"
+	"github.com/fun7257/weixinbot/protocol"
+	"github.com/fun7257/weixinbot/state"
 )
 
 // Handler is invoked for each inbound message (sequentially in the poll loop).

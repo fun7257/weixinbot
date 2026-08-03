@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/ilink"
+	"github.com/fun7257/weixinbot/ilink"
 )
 
 const (

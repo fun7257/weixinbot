@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/protocol"
+	"github.com/fun7257/weixinbot/protocol"
 )
 
 // DefaultBaseURL is the production iLink host used when login does not override it.

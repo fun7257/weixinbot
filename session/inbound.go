@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/media"
-	"github.com/tencent-weixin/weixinbot/protocol"
+	"github.com/fun7257/weixinbot/media"
+	"github.com/fun7257/weixinbot/protocol"
 )
 
 // InboundMessage is a host-agnostic event after one getupdates item is decoded.

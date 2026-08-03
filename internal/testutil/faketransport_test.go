@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tencent-weixin/weixinbot/internal/testutil"
+	"github.com/fun7257/weixinbot/internal/testutil"
 )
 
 func TestFakeTransportQueueOrder(t *testing.T) {

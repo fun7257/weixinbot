@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/state"
+	"github.com/fun7257/weixinbot/state"
 )
 
 func TestPeerStateTouchAndIncrPersist(t *testing.T) {

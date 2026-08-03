@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/state"
+	"github.com/fun7257/weixinbot/state"
 )
 
 // DefaultSessionWindow is the max age of last inbound for outbound replies.

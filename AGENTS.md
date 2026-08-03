@@ -12,7 +12,7 @@ Hard rules for humans and coding agents. Prefer short, enforceable directives ov
 
 ## Project Snapshot
 
-- Module: `github.com/tencent-weixin/weixinbot` (see `go.mod`).
+- Module: `github.com/fun7257/weixinbot` (see `go.mod`).
 - **Not** an OpenClaw plugin, Agent host, or webhook server.
 - Callers own the Agent. This module exposes `InboundMessage` events and `Send*` APIs.
 - Inbound: client long-polls `getupdates` + `get_updates_buf`.

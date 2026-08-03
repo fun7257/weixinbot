@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/ilink"
-	"github.com/tencent-weixin/weixinbot/state"
+	"github.com/fun7257/weixinbot/ilink"
+	"github.com/fun7257/weixinbot/state"
 )
 
 // DefaultBotType is the iLink bot_type for get_bot_qrcode.

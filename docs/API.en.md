@@ -2,7 +2,7 @@
 
 > **Language:** [English](./API.en.md) | [中文](./API.md)
 
-Module: `github.com/tencent-weixin/weixinbot`  
+Module: `github.com/fun7257/weixinbot`  
 Role: **WeChat iLink Bot communication library** (not an Agent, OpenClaw plugin, or webhook server).  
 Go: `1.22+` (see `go.mod`).
 
@@ -49,22 +49,22 @@ WeChat user ──iLink HTTP + CDN──► weixinbot ──► your Agent / Han
 ## 1. Install
 
 ```bash
-go get github.com/tencent-weixin/weixinbot@latest
+go get github.com/fun7257/weixinbot@latest
 ```
 
 Local development (example / monorepo):
 
 ```go
 // go.mod
-replace github.com/tencent-weixin/weixinbot => ../weixinbot
+replace github.com/fun7257/weixinbot => ../weixinbot
 ```
 
 ```go
 import (
-    "github.com/tencent-weixin/weixinbot/auth"
-    "github.com/tencent-weixin/weixinbot/ilink"
-    "github.com/tencent-weixin/weixinbot/session"
-    "github.com/tencent-weixin/weixinbot/state"
+    "github.com/fun7257/weixinbot/auth"
+    "github.com/fun7257/weixinbot/ilink"
+    "github.com/fun7257/weixinbot/session"
+    "github.com/fun7257/weixinbot/state"
     // optional: media, markdown, protocol
 )
 ```
@@ -98,9 +98,9 @@ import (
     "path/filepath"
     "syscall"
 
-    "github.com/tencent-weixin/weixinbot/ilink"
-    "github.com/tencent-weixin/weixinbot/session"
-    "github.com/tencent-weixin/weixinbot/state"
+    "github.com/fun7257/weixinbot/ilink"
+    "github.com/fun7257/weixinbot/session"
+    "github.com/fun7257/weixinbot/state"
 )
 
 func main() {

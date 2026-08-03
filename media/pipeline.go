@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tencent-weixin/weixinbot/ilink"
-	"github.com/tencent-weixin/weixinbot/protocol"
+	"github.com/fun7257/weixinbot/ilink"
+	"github.com/fun7257/weixinbot/protocol"
 )
 
 // Uploaded is the result of encrypting and uploading a local file to the CDN.

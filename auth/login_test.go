@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tencent-weixin/weixinbot/auth"
-	"github.com/tencent-weixin/weixinbot/internal/testutil"
-	"github.com/tencent-weixin/weixinbot/state"
+	"github.com/fun7257/weixinbot/auth"
+	"github.com/fun7257/weixinbot/internal/testutil"
+	"github.com/fun7257/weixinbot/state"
 )
 
 func TestWaitLoginConfirmed(t *testing.T) {

@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/tencent-weixin/weixinbot/internal/testutil"
-	"github.com/tencent-weixin/weixinbot/media"
+	"github.com/fun7257/weixinbot/internal/testutil"
+	"github.com/fun7257/weixinbot/media"
 )
 
 func TestUploadCiphertextRetriesThenSucceeds(t *testing.T) {

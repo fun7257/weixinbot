@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/tencent-weixin/weixinbot/ilink"
+	"github.com/fun7257/weixinbot/ilink"
 )
 
 // Sentinel errors for outbound policy hard blocks.

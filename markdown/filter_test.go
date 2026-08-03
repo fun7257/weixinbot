@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tencent-weixin/weixinbot/markdown"
+	"github.com/fun7257/weixinbot/markdown"
 )
 
 func TestFilterTable(t *testing.T) {

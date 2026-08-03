@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/tencent-weixin/weixinbot/state"
+	"github.com/fun7257/weixinbot/state"
 )
 
 func TestSaveAccountRejectsPathTraversal(t *testing.T) {
