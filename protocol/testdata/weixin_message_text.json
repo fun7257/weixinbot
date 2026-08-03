@@ -1,0 +1,24 @@
+{
+  "seq": 1,
+  "message_id": 1001,
+  "from_user_id": "user@im.wechat",
+  "to_user_id": "bot@im.wechat",
+  "client_id": "client-1",
+  "create_time_ms": 1700000000000,
+  "message_type": 1,
+  "message_state": 2,
+  "context_token": "ctx-text-1",
+  "item_list": [
+    {
+      "type": 1,
+      "text_item": { "text": "hello" },
+      "ref_msg": {
+        "title": "引用",
+        "message_item": {
+          "type": 1,
+          "text_item": { "text": "quoted body" }
+        }
+      }
+    }
+  ]
+}

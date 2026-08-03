@@ -1,0 +1,14 @@
+{
+  "filekey": "deadbeef",
+  "media_type": 1,
+  "to_user_id": "peer@im.wechat",
+  "rawsize": 16,
+  "rawfilemd5": "abc",
+  "filesize": 32,
+  "no_need_thumb": true,
+  "aeskey": "0123456789abcdef0123456789abcdef",
+  "base_info": {
+    "channel_version": "0.1.0",
+    "bot_agent": "WeixinBot/go"
+  }
+}

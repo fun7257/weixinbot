@@ -1,0 +1,20 @@
+{
+  "message_id": 1002,
+  "from_user_id": "user@im.wechat",
+  "context_token": "ctx-img-1",
+  "message_type": 1,
+  "item_list": [
+    {
+      "type": 2,
+      "image_item": {
+        "aeskey": "0123456789abcdef0123456789abcdef",
+        "media": {
+          "encrypt_query_param": "enc-q",
+          "aes_key": "ASNFZ4mrze8BI0VniavN7w==",
+          "encrypt_type": 1,
+          "full_url": "https://cdn.example/download?x=1"
+        }
+      }
+    }
+  ]
+}

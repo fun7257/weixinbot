@@ -1,0 +1,17 @@
+{
+  "ret": 0,
+  "errcode": 0,
+  "errmsg": "",
+  "get_updates_buf": "cursor-42",
+  "longpolling_timeout_ms": 35000,
+  "msgs": [
+    {
+      "from_user_id": "peer@im.wechat",
+      "context_token": "ctx-42",
+      "message_type": 1,
+      "item_list": [
+        { "type": 1, "text_item": { "text": "ping" } }
+      ]
+    }
+  ]
+}
