@@ -8,6 +8,8 @@ the Agent; this module exposes `InboundMessage` events and `Send*` APIs.
 
 **License:** MIT (see [LICENSE](./LICENSE)).
 
+**API reference (bilingual):** [中文](./docs/API.md) · [English](./docs/API.en.md)
+
 ## Protocol model
 
 | Direction | Mechanism |
