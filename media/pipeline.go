@@ -14,11 +14,13 @@ import (
 
 // Uploaded is the result of encrypting and uploading a local file to the CDN.
 type Uploaded struct {
-	FileKey                   string
+	FileKey                     string
 	DownloadEncryptedQueryParam string
-	AESKeyHex                 string
-	FileSize                  int
-	FileSizeCiphertext        int
+	AESKeyHex                   string
+	// FileMD5 is hex MD5 of plaintext (for file_item.md5 / diagnostics).
+	FileMD5            string
+	FileSize           int
+	FileSizeCiphertext int
 }
 
 // UploadFile reads path, requests getuploadurl, encrypts with AES-128-ECB, and POSTs to CDN.
@@ -77,6 +79,7 @@ func UploadFile(ctx context.Context, client *ilink.Client, cdn *CDN, filePath, t
 		FileKey:                     filekeyHex,
 		DownloadEncryptedQueryParam: downloadParam,
 		AESKeyHex:                   aeskeyHex,
+		FileMD5:                     rawMD5,
 		FileSize:                    rawsize,
 		FileSizeCiphertext:          filesize,
 	}, nil

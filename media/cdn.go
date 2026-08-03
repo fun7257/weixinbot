@@ -19,7 +19,9 @@ type CDN struct {
 	}
 	// MaxDownloadBytes limits DownloadCiphertext body size (0 → DefaultMaxBytes / DefaultDownloadMaxBytes).
 	MaxDownloadBytes int64
-	// AllowAnyFullURL disables full_url / upload_full_url host pin (tests only). Prefer false in production.
+	// AllowAnyFullURL disables host pinning for upload_full_url (tests only).
+	// Inbound full_url from the server is always used when it passes soft SSRF checks
+	// (matches openclaw-weixin, which prefers full_url without CDN-base pin).
 	AllowAnyFullURL bool
 }
 
@@ -36,7 +38,11 @@ func BuildUploadURL(cdnBaseURL, uploadParam, filekey string) string {
 		"&filekey=" + url.QueryEscape(filekey)
 }
 
+// CDNUploadMaxRetries matches openclaw-weixin cdn-upload (client errors do not retry).
+const CDNUploadMaxRetries = 3
+
 // UploadCiphertext POSTs AES ciphertext to the CDN and returns x-encrypted-param.
+// Retries up to CDNUploadMaxRetries times on network/5xx/missing header; 4xx aborts.
 func (c *CDN) UploadCiphertext(ctx context.Context, uploadFullURL, uploadParam, filekey string, ciphertext []byte) (downloadParam string, err error) {
 	var target string
 	if strings.TrimSpace(uploadFullURL) != "" {
@@ -56,60 +62,72 @@ func (c *CDN) UploadCiphertext(ctx context.Context, uploadFullURL, uploadParam, 
 		return "", fmt.Errorf("media: CDN upload URL missing (need upload_full_url or upload_param)")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(ciphertext))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-
 	client := c.HTTP
 	if client == nil {
 		client = http.DefaultClient
 	}
-	res, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("media: cdn upload: %w", err)
-	}
-	defer res.Body.Close()
 	max := c.maxBytes()
-	body, err := io.ReadAll(io.LimitReader(res.Body, max+1))
-	if err != nil {
-		return "", err
+	var last error
+	for attempt := 1; attempt <= CDNUploadMaxRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(ciphertext))
+		if err != nil {
+			return "", err
+		}
+		req.Header.Set("Content-Type", "application/octet-stream")
+
+		res, err := client.Do(req)
+		if err != nil {
+			last = fmt.Errorf("media: cdn upload: %w", err)
+			continue
+		}
+		body, rerr := io.ReadAll(io.LimitReader(res.Body, max+1))
+		_ = res.Body.Close()
+		if rerr != nil {
+			last = rerr
+			continue
+		}
+		if int64(len(body)) > max {
+			return "", fmt.Errorf("media: cdn upload response exceeds MaxDownloadBytes %d", max)
+		}
+		if res.StatusCode >= 400 && res.StatusCode < 500 {
+			// Client errors are not retried (same as openclaw-weixin).
+			return "", fmt.Errorf("media: cdn client error %d: %s", res.StatusCode, headerOrBody(res, body))
+		}
+		if res.StatusCode != http.StatusOK {
+			last = fmt.Errorf("media: cdn server error %d: %s", res.StatusCode, headerOrBody(res, body))
+			continue
+		}
+		param := res.Header.Get("x-encrypted-param")
+		if param == "" {
+			param = res.Header.Get("X-Encrypted-Param")
+		}
+		if param == "" {
+			last = fmt.Errorf("media: CDN response missing x-encrypted-param header")
+			continue
+		}
+		return param, nil
 	}
-	if int64(len(body)) > max {
-		return "", fmt.Errorf("media: cdn upload response exceeds MaxDownloadBytes %d", max)
+	if last == nil {
+		last = fmt.Errorf("media: cdn upload failed after %d attempts", CDNUploadMaxRetries)
 	}
-	if res.StatusCode >= 400 && res.StatusCode < 500 {
-		return "", fmt.Errorf("media: cdn client error %d: %s", res.StatusCode, headerOrBody(res, body))
-	}
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("media: cdn server error %d: %s", res.StatusCode, headerOrBody(res, body))
-	}
-	param := res.Header.Get("x-encrypted-param")
-	if param == "" {
-		return "", fmt.Errorf("media: CDN response missing x-encrypted-param header")
-	}
-	return param, nil
+	return "", last
 }
 
-// DownloadCiphertext GETs a CDN object (fullURL preferred when host-safe, else build from encrypt param).
+// DownloadCiphertext GETs a CDN object.
+//
+// Production rule (openclaw-weixin downloadAndDecryptBuffer):
+//  1. If full_url is present → use it (server-issued; only soft SSRF filter)
+//  2. Else build from encrypt_query_param + CDN base
+//
+// Do NOT pin full_url to the configured CDN base host — Tencent issues
+// regional/short-lived hosts that are valid but not always *.cdn.weixin.qq.com.
 func (c *CDN) DownloadCiphertext(ctx context.Context, fullURL, encryptQueryParam string) ([]byte, error) {
-	var target string
-	if strings.TrimSpace(fullURL) != "" {
-		target = strings.TrimSpace(fullURL)
-		if !c.AllowAnyFullURL {
-			if err := validateCDNFullURL(target, c.BaseURL); err != nil {
-				// Fall back to building from encrypt_query_param when full_url is untrusted.
-				if encryptQueryParam == "" {
-					return nil, err
-				}
-				target = BuildDownloadURL(c.BaseURL, encryptQueryParam)
-			}
-		}
-	} else if encryptQueryParam != "" {
-		target = BuildDownloadURL(c.BaseURL, encryptQueryParam)
-	} else {
-		return nil, fmt.Errorf("media: download URL missing")
+	target, err := c.resolveDownloadURL(fullURL, encryptQueryParam)
+	if err != nil {
+		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
@@ -138,6 +156,27 @@ func (c *CDN) DownloadCiphertext(ctx context.Context, fullURL, encryptQueryParam
 	return data, nil
 }
 
+func (c *CDN) resolveDownloadURL(fullURL, encryptQueryParam string) (string, error) {
+	full := strings.TrimSpace(fullURL)
+	if full != "" {
+		if err := validateInboundMediaURL(full); err != nil {
+			// Soft fail: try encrypt_query_param fallback when full_url is unusable.
+			if encryptQueryParam == "" {
+				return "", err
+			}
+		} else {
+			return full, nil
+		}
+	}
+	if encryptQueryParam != "" {
+		if c == nil || strings.TrimSpace(c.BaseURL) == "" {
+			return "", fmt.Errorf("media: CDN BaseURL required to build download URL")
+		}
+		return BuildDownloadURL(c.BaseURL, encryptQueryParam), nil
+	}
+	return "", fmt.Errorf("media: download URL missing (need full_url or encrypt_query_param)")
+}
+
 func (c *CDN) maxBytes() int64 {
 	if c != nil && c.MaxDownloadBytes > 0 {
 		return c.MaxDownloadBytes
@@ -145,13 +184,15 @@ func (c *CDN) maxBytes() int64 {
 	return DefaultDownloadMaxBytes
 }
 
-// validateCDNFullURL requires https and host matching CDN base registrable domain or suffix.
-func validateCDNFullURL(full, cdnBase string) error {
+// validateInboundMediaURL is a soft SSRF filter for server-issued full_url.
+// Unlike validateCDNFullURL (upload), it does NOT require Weixin CDN host pin.
+func validateInboundMediaURL(full string) error {
 	u, err := url.Parse(full)
 	if err != nil {
 		return fmt.Errorf("media: bad full_url: %w", err)
 	}
-	if u.Scheme != "https" && u.Scheme != "http" {
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "https" && scheme != "http" {
 		return fmt.Errorf("media: full_url scheme %q not allowed", u.Scheme)
 	}
 	if u.User != nil {
@@ -166,23 +207,31 @@ func validateCDNFullURL(full, cdnBase string) error {
 			return fmt.Errorf("media: full_url host is private IP")
 		}
 	}
-	// Prefer same host as configured CDN base when available.
+	return nil
+}
+
+// validateCDNFullURL requires https/http and host matching CDN base or Weixin CDN.
+// Used for upload_full_url (client-chosen / server-issued upload endpoint).
+func validateCDNFullURL(full, cdnBase string) error {
+	if err := validateInboundMediaURL(full); err != nil {
+		return err
+	}
+	u, _ := url.Parse(full)
+	host := strings.ToLower(u.Hostname())
 	if cdnBase != "" {
 		bu, err := url.Parse(cdnBase)
 		if err == nil && bu.Hostname() != "" {
 			bh := strings.ToLower(bu.Hostname())
-			h := strings.ToLower(host)
-			if h == bh || strings.HasSuffix(h, "."+bh) || strings.HasSuffix(bh, "."+h) {
+			if host == bh || strings.HasSuffix(host, "."+bh) || strings.HasSuffix(bh, "."+host) {
 				return nil
 			}
-			// Also allow common weixin CDN hosts.
-			if isWeixinHost(h) {
+			if isWeixinHost(host) {
 				return nil
 			}
 			return fmt.Errorf("media: full_url host %q not allowed for CDN base %q", host, bh)
 		}
 	}
-	if isWeixinHost(strings.ToLower(host)) {
+	if isWeixinHost(host) {
 		return nil
 	}
 	return fmt.Errorf("media: full_url host %q not allowlisted", host)

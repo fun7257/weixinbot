@@ -248,20 +248,41 @@ func (c *Client) GetUpdates(ctx context.Context, getUpdatesBuf string, longPollT
 }
 
 // SendMessage sends a single outbound WeixinMessage envelope.
+//
+// Production iLink often returns HTTP 200 with an empty body or "{}" on success
+// (no ret field). Empty / whitespace bodies are treated as success, matching
+// observed server behavior and sendTyping's empty-body handling.
 func (c *Client) SendMessage(ctx context.Context, msg *protocol.WeixinMessage) error {
 	body := protocol.SendMessageReq{Msg: msg, BaseInfo: c.baseInfo()}
 	data, err := c.postJSON(ctx, "sendMessage", protocol.PathSendMessage, body, c.cfg.Timeout)
 	if err != nil {
 		return err
 	}
-	var resp protocol.SendMessageResp
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return fmt.Errorf("sendMessage: decode: %w", err)
+	resp, err := decodeSendMessageResp(data)
+	if err != nil {
+		return err
 	}
 	if resp.Ret != 0 {
 		return &APIError{Op: "sendMessage", Ret: resp.Ret, ErrMsg: resp.ErrMsg}
 	}
 	return nil
+}
+
+// decodeSendMessageResp parses sendmessage JSON. Empty body → success (zero resp).
+func decodeSendMessageResp(data []byte) (protocol.SendMessageResp, error) {
+	var resp protocol.SendMessageResp
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return resp, nil
+	}
+	if err := json.Unmarshal(trimmed, &resp); err != nil {
+		snippet := string(trimmed)
+		if len(snippet) > 200 {
+			snippet = snippet[:200] + "…"
+		}
+		return resp, fmt.Errorf("sendMessage: decode: %w (body=%q)", err, snippet)
+	}
+	return resp, nil
 }
 
 // GetUploadURL requests CDN upload parameters for a file.
@@ -275,11 +296,23 @@ func (c *Client) GetUploadURL(ctx context.Context, req *protocol.GetUploadURLReq
 		return nil, err
 	}
 	var resp protocol.GetUploadURLResp
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("getUploadUrl: decode: %w", err)
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return &resp, nil
+	}
+	if err := json.Unmarshal(trimmed, &resp); err != nil {
+		return nil, fmt.Errorf("getUploadUrl: decode: %w (body=%q)", err, clipBody(trimmed))
 	}
 	// getuploadurl does not always use ret field; leave as-is when absent.
 	return &resp, nil
+}
+
+func clipBody(b []byte) string {
+	s := string(b)
+	if len(s) > 200 {
+		return s[:200] + "…"
+	}
+	return s
 }
 
 // GetConfig fetches typing_ticket (and related) for a user.
@@ -294,8 +327,12 @@ func (c *Client) GetConfig(ctx context.Context, ilinkUserID, contextToken string
 		return nil, err
 	}
 	var resp protocol.GetConfigResp
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("getConfig: decode: %w", err)
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return &resp, nil
+	}
+	if err := json.Unmarshal(trimmed, &resp); err != nil {
+		return nil, fmt.Errorf("getConfig: decode: %w (body=%q)", err, clipBody(trimmed))
 	}
 	if resp.Ret != 0 {
 		return &resp, &APIError{Op: "getConfig", Ret: resp.Ret, ErrMsg: resp.ErrMsg}

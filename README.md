@@ -6,6 +6,8 @@ Idiomatic Go library for **client-driven** WeChat bot messaging over the
 This is **not** an OpenClaw plugin, Agent host, or webhook server. Callers own
 the Agent; this module exposes `InboundMessage` events and `Send*` APIs.
 
+**License:** MIT (see [LICENSE](./LICENSE)).
+
 ## Protocol model
 
 | Direction | Mechanism |
@@ -47,7 +49,7 @@ the Agent; this module exposes `InboundMessage` events and `Send*` APIs.
 | QR login + store | `auth.StartQR`, `WaitLogin`, `CompleteLogin` | `auth/login_test.go` |
 | Peer state | `state.TouchInbound`, `IncrOutbound`, `GetPeer` | `state/peer_test.go` |
 | Path sanitize | `state.SaveAccount` etc. | `state/store_test.go` |
-| Inbound parse + quote | `session.ParseInbound` | `session/session_test.go` |
+| Inbound parse + quote | `ParseInbound`, `Quote`, `Body` (msgid shell → msg_id only) | `session/session_test.go` |
 | Inbound media download | `media.DownloadItem` | `media/download_test.go` |
 | SILK degrade / WAV helpers | `media.SilkToWAV`, `WAVOrPCMToSilk` | `media/download_test.go` |
 | Dispatch + cursor + token | `session.Session.Run` | `session/session_test.go` |
@@ -61,6 +63,14 @@ the Agent; this module exposes `InboundMessage` events and `Send*` APIs.
 | Rate-limit retry | `RetryRateLimit` | `session/session_test.go` |
 | Typing + config cache | `StartTyping`, `WithTyping`, `ConfigCache` | `session/session_test.go` |
 | Multi-account | `session.Manager` | `session/session_test.go` |
+| Quote / `ref_msg` (incl. msgid shell) | `ParseInbound`, `Quote`, `Body` | `session/session_test.go` |
+| CDN upload retry (5xx) | `media.CDN.UploadCiphertext` | `media/cdn_test.go` |
+
+## Non-goals (app / host layer)
+
+- OpenClaw channel registration, pairing UI, slash framework, Agent runtime
+- Message-history cache for quote body restore (protocol only gives `msg_id` shells; cache is caller-owned)
+- Webhook servers or push inbound (client long-poll only)
 
 ## Environment variables
 

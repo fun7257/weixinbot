@@ -15,6 +15,60 @@ import (
 	"github.com/tencent-weixin/weixinbot/protocol"
 )
 
+// TestDownloadPrefersServerFullURL ensures inbound full_url is used even when
+// its host is not the configured CDN base (production openclaw-weixin behavior).
+func TestDownloadPrefersServerFullURL(t *testing.T) {
+	key := []byte("0123456789abcdef")
+	plain := []byte("full-url-plaintext!!")
+	ct, err := media.EncryptAES128ECB(plain, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hexKey := hex.EncodeToString(key)
+
+	ft := testutil.NewFakeTransport()
+	// full_url path is /dl/token — only served when full_url is used as-is.
+	ft.OnContains("/dl/", testutil.BytesResponder(200, ct, nil))
+	// Built-from-param path would be /c2c/download?encrypted_query_param=...
+	ft.OnContains("/c2c/download", testutil.BytesResponder(500, []byte("wrong host"), nil))
+
+	cdn := &media.CDN{
+		BaseURL: "https://novac2c.cdn.weixin.qq.com/c2c",
+		HTTP:    ft.Client(),
+	}
+	store, err := media.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lm, err := media.DownloadItem(context.Background(), protocol.MessageItem{
+		Type: protocol.ItemTypeImage,
+		ImageItem: &protocol.ImageItem{
+			AESKey: hexKey,
+			Media: &protocol.CDNMedia{
+				FullURL:           "https://szims.weixin.qq.com/dl/token-abc",
+				EncryptQueryParam: "should-not-use-alone",
+				EncryptType:       1,
+			},
+		},
+	}, media.DownloadDeps{CDN: cdn, Store: store, AccountID: "bot1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lm == nil || lm.Kind != "image" {
+		t.Fatalf("%+v", lm)
+	}
+	got, _ := os.ReadFile(lm.Path)
+	if !bytes.Equal(got, plain) {
+		t.Fatalf("content mismatch")
+	}
+	if ft.CountPath("/dl/") < 1 {
+		t.Fatal("expected download via server full_url path")
+	}
+	if ft.CountPath("/c2c/download") > 0 {
+		t.Fatal("must not rebuild download against CDN base when full_url present")
+	}
+}
+
 func TestDownloadItemFourKinds(t *testing.T) {
 	key := []byte("0123456789abcdef")
 	plain := []byte("hello-media-plaintext!!")
@@ -55,7 +109,8 @@ func TestDownloadItemFourKinds(t *testing.T) {
 			name: "file",
 			item: protocol.MessageItem{Type: protocol.ItemTypeFile, FileItem: &protocol.FileItem{
 				FileName: "doc.pdf",
-				Media:    &protocol.CDNMedia{EncryptQueryParam: "q", AESKey: b64},
+				// Production file path: base64(ASCII hex key), not base64(raw 16).
+				Media: &protocol.CDNMedia{EncryptQueryParam: "q", AESKey: base64.StdEncoding.EncodeToString([]byte(hexKey))},
 			}},
 			kind: "file",
 			mime: "application/pdf",
@@ -111,7 +166,7 @@ func TestDownloadVoiceTranscodeSuccess(t *testing.T) {
 	store, _ := media.NewStore(t.TempDir())
 	wav := media.PCMToWAV([]byte{0, 0, 1, 0}, media.SILKSampleRate)
 	lm, err := media.DownloadItem(context.Background(), protocol.MessageItem{
-		Type: protocol.ItemTypeVoice,
+		Type:      protocol.ItemTypeVoice,
 		VoiceItem: &protocol.VoiceItem{Media: &protocol.CDNMedia{FullURL: "https://cdn.test/d", AESKey: b64}},
 	}, media.DownloadDeps{
 		CDN: cdn, Store: store,
@@ -130,7 +185,7 @@ func TestDownloadMissingURLAndMaxBytes(t *testing.T) {
 	store.MaxBytes = 4
 	cdn := &media.CDN{BaseURL: "https://cdn.test/c2c", HTTP: http.DefaultClient}
 	_, err := media.DownloadItem(context.Background(), protocol.MessageItem{
-		Type: protocol.ItemTypeImage,
+		Type:      protocol.ItemTypeImage,
 		ImageItem: &protocol.ImageItem{Media: &protocol.CDNMedia{}},
 	}, media.DownloadDeps{CDN: cdn, Store: store})
 	if err == nil {

@@ -331,8 +331,9 @@ func (s *Session) dispatch(ctx context.Context, raw protocol.WeixinMessage) erro
 		codec = media.DefaultSilkCodec
 	}
 	deps := media.DownloadDeps{
-		CDN:   s.cdn,
-		Store: s.media,
+		CDN:       s.cdn,
+		Store:     s.media,
+		AccountID: s.opts.AccountID,
 		SilkToWAV: func(silk []byte) ([]byte, error) {
 			return media.SilkToWAV(silk, codec)
 		},
@@ -340,6 +341,7 @@ func (s *Session) dispatch(ctx context.Context, raw protocol.WeixinMessage) erro
 	for _, it := range raw.ItemList {
 		lm, err := media.DownloadItem(ctx, it, deps)
 		if err != nil {
+			msg.MediaErrors = append(msg.MediaErrors, err.Error())
 			s.opts.OnMediaError(msg, err)
 			continue
 		}
@@ -478,15 +480,15 @@ func (s *Session) SendToolResult(ctx context.Context, toUserID, toolName, toolCa
 // SendImageFile uploads a local image and sends IMAGE item (optional caption).
 func (s *Session) SendImageFile(ctx context.Context, toUserID, filePath, caption string) error {
 	return s.sendUploadedMedia(ctx, toUserID, filePath, caption, protocol.UploadMediaImage, func(up *media.Uploaded) protocol.MessageItem {
-		aesB64 := aesKeyHexToBase64(up.AESKeyHex)
 		return protocol.MessageItem{
 			Type: protocol.ItemTypeImage,
 			ImageItem: &protocol.ImageItem{
 				Media: &protocol.CDNMedia{
 					EncryptQueryParam: up.DownloadEncryptedQueryParam,
-					AESKey:            aesB64,
+					AESKey:            aesKeyHexToMediaBase64(up.AESKeyHex),
 					EncryptType:       1,
 				},
+				// Hex form also present on image_item for some clients.
 				AESKey:  up.AESKeyHex,
 				HDSize:  up.FileSizeCiphertext,
 				MidSize: up.FileSizeCiphertext,
@@ -498,16 +500,17 @@ func (s *Session) SendImageFile(ctx context.Context, toUserID, filePath, caption
 // SendVideoFile uploads and sends a video.
 func (s *Session) SendVideoFile(ctx context.Context, toUserID, filePath, caption string) error {
 	return s.sendUploadedMedia(ctx, toUserID, filePath, caption, protocol.UploadMediaVideo, func(up *media.Uploaded) protocol.MessageItem {
-		aesB64 := aesKeyHexToBase64(up.AESKeyHex)
 		return protocol.MessageItem{
 			Type: protocol.ItemTypeVideo,
 			VideoItem: &protocol.VideoItem{
 				Media: &protocol.CDNMedia{
 					EncryptQueryParam: up.DownloadEncryptedQueryParam,
-					AESKey:            aesB64,
+					AESKey:            aesKeyHexToMediaBase64(up.AESKeyHex),
 					EncryptType:       1,
 				},
-				VideoSize: up.FileSize,
+				// Production path uses ciphertext size for video_size.
+				VideoSize: up.FileSizeCiphertext,
+				VideoMD5:  up.FileMD5,
 			},
 		}
 	})
@@ -516,17 +519,18 @@ func (s *Session) SendVideoFile(ctx context.Context, toUserID, filePath, caption
 // SendFileAttachment uploads a non-media file and sends FILE item.
 func (s *Session) SendFileAttachment(ctx context.Context, toUserID, filePath string) error {
 	return s.sendUploadedMedia(ctx, toUserID, filePath, "", protocol.UploadMediaFile, func(up *media.Uploaded) protocol.MessageItem {
-		aesB64 := aesKeyHexToBase64(up.AESKeyHex)
 		name := filepath.Base(filePath)
 		return protocol.MessageItem{
 			Type: protocol.ItemTypeFile,
 			FileItem: &protocol.FileItem{
 				Media: &protocol.CDNMedia{
 					EncryptQueryParam: up.DownloadEncryptedQueryParam,
-					AESKey:            aesB64,
-					EncryptType:       1,
+					// File/voice/video: base64(ASCII hex key), matching openclaw-weixin.
+					AESKey:      aesKeyHexToMediaBase64(up.AESKeyHex),
+					EncryptType: 1,
 				},
 				FileName: name,
+				MD5:      up.FileMD5,
 				Len:      fmt.Sprintf("%d", up.FileSize),
 			},
 		}
@@ -727,13 +731,12 @@ func (s *Session) prepareMediaUpload(filePath string) (
 	switch media.DetectMediaKind(filePath) {
 	case "image":
 		return filePath, protocol.UploadMediaImage, func(up *media.Uploaded) protocol.MessageItem {
-			aesB64 := aesKeyHexToBase64(up.AESKeyHex)
 			return protocol.MessageItem{
 				Type: protocol.ItemTypeImage,
 				ImageItem: &protocol.ImageItem{
 					Media: &protocol.CDNMedia{
 						EncryptQueryParam: up.DownloadEncryptedQueryParam,
-						AESKey:            aesB64,
+						AESKey:            aesKeyHexToMediaBase64(up.AESKeyHex),
 						EncryptType:       1,
 					},
 					AESKey:  up.AESKeyHex,
@@ -744,16 +747,16 @@ func (s *Session) prepareMediaUpload(filePath string) (
 		}, nil, nil
 	case "video":
 		return filePath, protocol.UploadMediaVideo, func(up *media.Uploaded) protocol.MessageItem {
-			aesB64 := aesKeyHexToBase64(up.AESKeyHex)
 			return protocol.MessageItem{
 				Type: protocol.ItemTypeVideo,
 				VideoItem: &protocol.VideoItem{
 					Media: &protocol.CDNMedia{
 						EncryptQueryParam: up.DownloadEncryptedQueryParam,
-						AESKey:            aesB64,
+						AESKey:            aesKeyHexToMediaBase64(up.AESKeyHex),
 						EncryptType:       1,
 					},
-					VideoSize: up.FileSize,
+					VideoSize: up.FileSizeCiphertext,
+					VideoMD5:  up.FileMD5,
 				},
 			}
 		}, nil, nil
@@ -763,13 +766,12 @@ func (s *Session) prepareMediaUpload(filePath string) (
 			return "", 0, nil, clean, encErr
 		}
 		return silkPath, protocol.UploadMediaVoice, func(up *media.Uploaded) protocol.MessageItem {
-			aesB64 := aesKeyHexToBase64(up.AESKeyHex)
 			return protocol.MessageItem{
 				Type: protocol.ItemTypeVoice,
 				VoiceItem: &protocol.VoiceItem{
 					Media: &protocol.CDNMedia{
 						EncryptQueryParam: up.DownloadEncryptedQueryParam,
-						AESKey:            aesB64,
+						AESKey:            aesKeyHexToMediaBase64(up.AESKeyHex),
 						EncryptType:       1,
 					},
 					EncodeType:    1,
@@ -781,16 +783,16 @@ func (s *Session) prepareMediaUpload(filePath string) (
 		}, clean, nil
 	default:
 		return filePath, protocol.UploadMediaFile, func(up *media.Uploaded) protocol.MessageItem {
-			aesB64 := aesKeyHexToBase64(up.AESKeyHex)
 			return protocol.MessageItem{
 				Type: protocol.ItemTypeFile,
 				FileItem: &protocol.FileItem{
 					Media: &protocol.CDNMedia{
 						EncryptQueryParam: up.DownloadEncryptedQueryParam,
-						AESKey:            aesB64,
+						AESKey:            aesKeyHexToMediaBase64(up.AESKeyHex),
 						EncryptType:       1,
 					},
 					FileName: filepath.Base(filePath),
+					MD5:      up.FileMD5,
 					Len:      fmt.Sprintf("%d", up.FileSize),
 				},
 			}
@@ -962,12 +964,16 @@ func (s *Session) WithTyping(ctx context.Context, userID string, fn func(context
 	return err
 }
 
-func aesKeyHexToBase64(hexKey string) string {
-	b, err := hex.DecodeString(hexKey)
-	if err != nil {
+// aesKeyHexToMediaBase64 encodes media.aes_key the way openclaw-weixin does:
+// base64(ASCII of the 32-char hex key), not base64(raw 16 bytes).
+// WeChat file/voice/video clients commonly expect this form; image media also
+// uses it on the production send path. Inbound resolveAESKey accepts both.
+func aesKeyHexToMediaBase64(hexKey string) string {
+	hexKey = strings.TrimSpace(hexKey)
+	if hexKey == "" {
 		return ""
 	}
-	return base64.StdEncoding.EncodeToString(b)
+	return base64.StdEncoding.EncodeToString([]byte(hexKey))
 }
 
 // validatePublicMediaURL enforces http(s) and rejects private/link-local/metadata hosts.

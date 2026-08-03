@@ -68,6 +68,30 @@ func TestSendMessageRetNonZero(t *testing.T) {
 	}
 }
 
+func TestSendMessageEmptyBodyIsSuccess(t *testing.T) {
+	ft := testutil.NewFakeTransport()
+	// Production iLink often returns 200 with empty body or only whitespace.
+	ft.OnContains(protocol.PathSendMessage, func(req *http.Request, body []byte) (*http.Response, error) {
+		return testutil.BytesResponder(200, []byte("  \n"), nil)(req, body)
+	})
+	c := newTestClient(ft)
+	if err := c.SendMessage(context.Background(), &protocol.WeixinMessage{
+		ToUserID: "u", ContextToken: "ctx", MessageType: 2, MessageState: 2,
+		ItemList: []protocol.MessageItem{{Type: 1, TextItem: &protocol.TextItem{Text: "hi"}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSendMessageEmptyJSONObjectIsSuccess(t *testing.T) {
+	ft := testutil.NewFakeTransport()
+	ft.OnContains(protocol.PathSendMessage, testutil.BytesResponder(200, []byte("{}"), nil))
+	c := newTestClient(ft)
+	if err := c.SendMessage(context.Background(), &protocol.WeixinMessage{ToUserID: "u"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGetUploadURLCGI(t *testing.T) {
 	ft := testutil.NewFakeTransport()
 	ft.EnqueueJSON(protocol.PathGetUploadURL, 200, protocol.GetUploadURLResp{UploadFullURL: "https://cdn/u"})

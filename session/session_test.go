@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -364,6 +365,17 @@ func TestSendFileAttachmentPipeline(t *testing.T) {
 			if it.FileItem.FileName != "doc.pdf" {
 				t.Fatalf("name %q", it.FileItem.FileName)
 			}
+			// media.aes_key must be base64(ASCII hex), not base64(raw 16).
+			raw, err := base64.StdEncoding.DecodeString(it.FileItem.Media.AESKey)
+			if err != nil || len(raw) != 32 {
+				t.Fatalf("aes_key wire form: len=%d err=%v", len(raw), err)
+			}
+			if it.FileItem.MD5 == "" {
+				t.Fatal("file_item.md5 required")
+			}
+			if it.FileItem.Len != fmt.Sprintf("%d", len(plain)) {
+				t.Fatalf("len %q", it.FileItem.Len)
+			}
 		}
 	}
 	if !sawUpload || !sawCDN || !sawSend {
@@ -644,7 +656,7 @@ func TestInboundImageDownloadAndMediaError(t *testing.T) {
 	var sess *session.Session
 	sess, _ = session.New(withTestCDNFlags(session.Options{
 		AccountID: accountID, Client: client, Store: st, HTTP: ft.Client(), MediaStore: ms,
-		CDNBaseURL: "https://cdn-test.example/c2c",
+		CDNBaseURL:      "https://cdn-test.example/c2c",
 		LongPollTimeout: 50 * time.Millisecond, RetryDelay: 10 * time.Millisecond,
 		Handler: func(ctx context.Context, msg session.InboundMessage) error {
 			got = msg
@@ -674,42 +686,148 @@ func TestParseInboundQuotes(t *testing.T) {
 	tests := []struct {
 		name      string
 		raw       protocol.WeixinMessage
-		want      string
+		wantText  string
+		wantBody  string
 		quoteKind string
+		hasQuote  bool
 	}{
-		{"title only", protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
-			Type: 1, TextItem: &protocol.TextItem{Text: "reply"},
-			RefMsg: &protocol.RefMessage{Title: "t"},
-		}}}, "「t」\nreply", ""},
-		{"title+text", protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
-			Type: 1, TextItem: &protocol.TextItem{Text: "r"},
-			RefMsg: &protocol.RefMessage{Title: "t", MessageItem: &protocol.MessageItem{
-				Type: 1, TextItem: &protocol.TextItem{Text: "q"},
-			}},
-		}}}, "「t: q」\nr", ""},
-		{"empty ref", protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
-			Type: 1, TextItem: &protocol.TextItem{Text: "only"},
-		}}}, "only", ""},
-		{"quote image", protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
-			Type: 1, TextItem: &protocol.TextItem{Text: "see"},
-			RefMsg: &protocol.RefMessage{Title: "图", MessageItem: &protocol.MessageItem{
-				Type: protocol.ItemTypeImage, ImageItem: &protocol.ImageItem{},
-			}},
-		}}}, "「图」\nsee", "image"},
-		{"voice asr", protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
-			Type: protocol.ItemTypeVoice,
-			VoiceItem: &protocol.VoiceItem{Text: "said hello"},
-		}}}, "said hello", ""},
+		{
+			name: "title only",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "reply"},
+				RefMsg: &protocol.RefMessage{Title: "t"},
+			}}},
+			wantText: "reply",
+			wantBody: "[引用: t]\nreply",
+			hasQuote: true,
+		},
+		{
+			name: "title+text",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "r"},
+				RefMsg: &protocol.RefMessage{Title: "t", MessageItem: &protocol.MessageItem{
+					Type: 1, TextItem: &protocol.TextItem{Text: "q"},
+				}},
+			}}},
+			wantText: "r",
+			wantBody: "[引用: t | q]\nr",
+			hasQuote: true,
+		},
+		{
+			name: "message_item only",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "reply"},
+				RefMsg: &protocol.RefMessage{MessageItem: &protocol.MessageItem{
+					Type: 1, TextItem: &protocol.TextItem{Text: "quoted"},
+				}},
+			}}},
+			wantText: "reply",
+			wantBody: "[引用: quoted]\nreply",
+			hasQuote: true,
+		},
+		{
+			name: "empty ref ignored",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "only"},
+				RefMsg: &protocol.RefMessage{},
+			}}},
+			wantText: "only",
+			wantBody: "only",
+			hasQuote: false,
+		},
+		{
+			name: "no ref",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "only"},
+			}}},
+			wantText: "only",
+			wantBody: "only",
+		},
+		{
+			// Media quote: body stays as current text only (openclaw behavior).
+			name: "quote image",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "see"},
+				RefMsg: &protocol.RefMessage{Title: "图", MessageItem: &protocol.MessageItem{
+					Type: protocol.ItemTypeImage, ImageItem: &protocol.ImageItem{},
+				}},
+			}}},
+			wantText:  "see",
+			wantBody:  "see",
+			quoteKind: session.QuoteKindImage,
+			hasQuote:  true,
+		},
+		{
+			name: "quote image without type field",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "/quote"},
+				RefMsg: &protocol.RefMessage{MessageItem: &protocol.MessageItem{
+					ImageItem: &protocol.ImageItem{},
+				}},
+			}}},
+			wantText:  "/quote",
+			wantBody:  "/quote",
+			quoteKind: session.QuoteKindImage,
+			hasQuote:  true,
+		},
+		{
+			name: "voice asr",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type:      protocol.ItemTypeVoice,
+				VoiceItem: &protocol.VoiceItem{Text: "said hello"},
+			}}},
+			wantText: "said hello",
+			wantBody: "said hello",
+		},
+		{
+			// Slash command must remain in Text so handlers can match HasPrefix("/").
+			name: "slash with text quote",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "/quote"},
+				RefMsg: &protocol.RefMessage{Title: "Author", MessageItem: &protocol.MessageItem{
+					Type: 1, TextItem: &protocol.TextItem{Text: "old"},
+				}},
+			}}},
+			wantText: "/quote",
+			wantBody: "[引用: Author | old]\n/quote",
+			hasQuote: true,
+		},
+		{
+			// Production ClawBot: ref shell is type=0 + msg_id only (no text/media).
+			name: "msgid shell type0",
+			raw: protocol.WeixinMessage{ItemList: []protocol.MessageItem{{
+				Type: 1, TextItem: &protocol.TextItem{Text: "/quote"},
+				RefMsg: &protocol.RefMessage{MessageItem: &protocol.MessageItem{
+					Type:         0,
+					MsgID:        "7489942321137011208",
+					CreateTimeMs: 1785741406000,
+					IsCompleted:  true,
+				}},
+			}}},
+			wantText:  "/quote",
+			wantBody:  "[引用: msg_id=7489942321137011208]\n/quote",
+			quoteKind: session.QuoteKindMsgID,
+			hasQuote:  true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := session.ParseInbound(tt.raw)
-			if p.Text != tt.want {
-				t.Fatalf("got %q want %q", p.Text, tt.want)
+			if p.Text != tt.wantText {
+				t.Fatalf("Text got %q want %q", p.Text, tt.wantText)
+			}
+			if p.Body() != tt.wantBody {
+				t.Fatalf("Body got %q want %q", p.Body(), tt.wantBody)
+			}
+			if tt.hasQuote && p.Quote == nil {
+				t.Fatal("expected Quote")
+			}
+			if !tt.hasQuote && p.Quote != nil {
+				t.Fatalf("unexpected Quote %+v", p.Quote)
 			}
 			if tt.quoteKind != "" {
-				if p.Quote == nil || p.Quote.Media == nil || p.Quote.Media.Kind != tt.quoteKind {
-					t.Fatalf("quote media %+v", p.Quote)
+				if p.Quote == nil || p.Quote.Kind != tt.quoteKind {
+					t.Fatalf("quote kind %+v", p.Quote)
 				}
 			}
 		})
@@ -754,7 +872,7 @@ func TestInboundVoiceASRAndPath(t *testing.T) {
 	done := make(chan struct{})
 	sess, _ := session.New(withTestCDNFlags(session.Options{
 		AccountID: accountID, Client: client, Store: st, HTTP: ft.Client(), MediaStore: ms,
-		CDNBaseURL: "https://cdn-test.example/c2c",
+		CDNBaseURL:      "https://cdn-test.example/c2c",
 		LongPollTimeout: 50 * time.Millisecond, RetryDelay: 10 * time.Millisecond,
 		Handler: func(ctx context.Context, msg session.InboundMessage) error {
 			got = msg
@@ -1118,7 +1236,7 @@ func TestDownloadFailureStillDeliversText(t *testing.T) {
 	done := make(chan struct{})
 	sess, _ := session.New(withTestCDNFlags(session.Options{
 		AccountID: accountID, Client: client, Store: st, HTTP: ft.Client(), MediaStore: ms,
-		CDNBaseURL: "https://cdn-test.example/c2c",
+		CDNBaseURL:      "https://cdn-test.example/c2c",
 		LongPollTimeout: 50 * time.Millisecond, RetryDelay: 10 * time.Millisecond,
 		OnMediaError: func(msg session.InboundMessage, err error) { mediaErrs.Add(1) },
 		Handler: func(ctx context.Context, msg session.InboundMessage) error {

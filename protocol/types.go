@@ -4,6 +4,8 @@
 // comments note only non-obvious protocol quirks (e.g. key encodings).
 package protocol
 
+import "encoding/json"
+
 // Path* are CGI paths relative to the bot base URL.
 const (
 	PathGetUpdates   = "ilink/bot/getupdates"
@@ -111,11 +113,7 @@ type VideoItem struct {
 	ThumbWidth  int       `json:"thumb_width,omitempty"`
 }
 
-// RefMessage is a quoted/referenced message on the wire.
-type RefMessage struct {
-	MessageItem *MessageItem `json:"message_item,omitempty"`
-	Title       string       `json:"title,omitempty"`
-}
+// RefMessage is defined in ref.go (flexible JSON unmarshaling).
 
 // ToolCallStartItem is a wire tool-call start progress item.
 type ToolCallStartItem struct {
@@ -145,6 +143,9 @@ type MessageItem struct {
 	VideoItem          *VideoItem          `json:"video_item,omitempty"`
 	ToolCallStartItem  *ToolCallStartItem  `json:"tool_call_start_item,omitempty"`
 	ToolCallResultItem *ToolCallResultItem `json:"tool_call_result_item,omitempty"`
+	// Present on some ref_msg.message_item shells from production getupdates.
+	ButtonItemList    []json.RawMessage `json:"button_item_list,omitempty"`
+	AtBotUsernameList []string          `json:"at_bot_username_list,omitempty"`
 }
 
 // WeixinMessage is the unified message envelope on the wire.

@@ -20,8 +20,8 @@ const (
 // ConfigCache caches getConfig typing_ticket per user with ~24h TTL plus
 // small random jitter, and exponential backoff (cap 1h) on failure.
 type ConfigCache struct {
-	client *ilink.Client
-	mu     sync.Mutex
+	client  *ilink.Client
+	mu      sync.Mutex
 	entries map[string]*configEntry
 	// Now injectable for tests
 	Now func() time.Time
