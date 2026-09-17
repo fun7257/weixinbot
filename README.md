@@ -24,11 +24,11 @@ the Agent; this module exposes `InboundMessage` events and `Send*` APIs.
 |---------|------|
 | `protocol` | Wire types and path constants |
 | `ilink` | HTTP transport, auth headers, CGI helpers, `IsRateLimited` / `IsStaleToken` |
-| `auth` | QR login state machine + `CompleteLogin` |
+| `auth` | QR login (`LoginQR` / `LoginQRStdin`) plus `StartQR` / `WaitLogin` / `CompleteLogin` |
 | `state` | Account credentials, sync cursor, context tokens, **peer state** (window/quota) |
 | `media` | AES-ECB, CDN, upload/download, MIME routing, SILK helpers |
 | `markdown` | Outbound streaming markdown filter + rune chunking |
-| `session` | Run loop, policy, Send*, typing, SessionManager |
+| `session` | Run loop, policy, Send*, typing, `OpenWith`, `RunAccount` / `RunToken`, `Manager` |
 
 ## Defaults (hard policy)
 
@@ -48,16 +48,18 @@ the Agent; this module exposes `InboundMessage` events and `Send*` APIs.
 | Protocol fixtures | `protocol` types | `protocol/types_test.go` |
 | getupdates / sendmessage / getuploadurl / getconfig / sendtyping / notify* | `ilink.Client` | `ilink/client_cgi_test.go` |
 | Rate limit / stale token | `ilink.IsRateLimited`, `IsStaleToken` | `ilink/errors_test.go` |
-| QR login + store | `auth.StartQR`, `WaitLogin`, `CompleteLogin` | `auth/login_test.go` |
+| QR login + store | `auth.LoginQR`, `LoginQRStdin`, `StartQR`, `WaitLogin`, `CompleteLogin` | `auth/login_test.go`, `auth/login_flow_test.go` |
 | Peer state | `state.TouchInbound`, `IncrOutbound`, `GetPeer` | `state/peer_test.go` |
 | Path sanitize | `state.SaveAccount` etc. | `state/store_test.go` |
 | Inbound parse + quote | `ParseInbound`, `Quote`, `Body` (msgid shell → msg_id only) | `session/session_test.go` |
 | Inbound media download | `media.DownloadItem` | `media/download_test.go` |
 | SILK degrade / WAV helpers | `media.SilkToWAV`, `WAVOrPCMToSilk` | `media/download_test.go` |
+| Open + bind handler | `session.Open`, `session.OpenWith` | `session/open_with_test.go` |
+| Run helpers | `session.RunAccount`, `RunToken`, `LoginAndRun` | `session/run_helpers_test.go` |
 | Dispatch + cursor + token | `session.Session.Run` | `session/session_test.go` |
 | Policy hard block | `OutboundPolicy` via `Send*` | `session/session_test.go` |
 | SendText + markdown + chunk | `SendText`, `SendTextOpts` | `session/session_test.go` |
-| Send image/video/file/voice | `SendImageFile` / `SendVideoFile` / `SendFileAttachment` / `SendVoice` | `session/session_test.go` |
+| Send image/video/file/voice | `SendImageFile` / `SendVideoFile` / `SendFileAttachment` / `SendVoice` (aliases `SendImage` / `SendVideo` / `SendFile` / `SendVoiceFile`) | `session/session_test.go` |
 | SendMedia / URL | `SendMedia`, `SendMediaURL` | `session/session_test.go` |
 | Tool progress | `SendToolStart`, `SendToolResult` | `session/session_test.go` |
 | SendItem | `SendItem` | `session/session_test.go` |
@@ -79,27 +81,79 @@ the Agent; this module exposes `InboundMessage` events and `Send*` APIs.
 | Env | Meaning |
 |-----|---------|
 | `ILINK_BOT_TOKEN` | Bot bearer token (required unless loaded from state store) |
-| `ILINK_ACCOUNT_ID` | Account id under state dir (default `my-bot`) |
-| `ILINK_BASE_URL` | iLink origin (default `https://ilinkai.weixin.qq.com`) |
-| `WEIXINBOT_STATE` | State root (default `~/.weixinbot`) |
+| `ILINK_ACCOUNT_ID` | Account id. `RunAccount` uses this when the argument is empty; `RunToken` then falls back to `default` |
+| `ILINK_BASE_URL` | iLink origin (default `ilink.DefaultBaseURL`) |
+| `WEIXINBOT_STATE` | State root used by examples (default `~/.weixinbot`) |
 
 ## Minimal usage
 
-```go
-store, _ := state.NewStore("/var/lib/weixinbot")
-_ = store.SaveAccount("my-bot", state.Account{
-    Token:   os.Getenv("ILINK_BOT_TOKEN"),
-    BaseURL: "https://ilinkai.weixin.qq.com",
-})
+Runnable demos: [`examples/echo`](./examples/echo) (primary) and [`examples/login-qr`](./examples/login-qr).
 
-var sess *session.Session
-sess, _ = session.Open(store, "my-bot", nil, func(ctx context.Context, msg session.InboundMessage) error {
-    return sess.SendText(ctx, msg.FromUserID, "echo: "+msg.Text)
+### OpenWith (echo)
+
+`OpenWith` binds the handler after the `*Session` exists so `Send*` / `WithTyping` need no forward-declared variable.
+
+```go
+store, err := state.NewStore(stateDir)
+sess, err := session.OpenWith(store, accountID, nil, func(s *session.Session) session.Handler {
+    return func(ctx context.Context, msg session.InboundMessage) error {
+        return s.WithTyping(ctx, msg.FromUserID, func(ctx context.Context) error {
+            return s.SendText(ctx, msg.FromUserID, "echo: "+msg.Text)
+        })
+    }
 })
-ctx, cancel := context.WithCancel(context.Background())
-defer cancel()
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
 _ = sess.Run(ctx)
 ```
+
+`session.Open` still exists and takes a `Handler` directly.
+
+### LoginQRStdin
+
+```go
+store, err := state.NewStore(stateDir)
+res, err := auth.LoginQRStdin(ctx, store)
+// res.AccountID — do not log BotToken
+```
+
+`LoginQRStdin` is `StartQR` → print `Scan QR: <QRCodeURL>` on stderr → `WaitLogin` → `CompleteLogin`.
+Use `auth.LoginQR` when you need a custom `OnQR` / `VerifyCode` / HTTP fake.
+
+### RunToken
+
+Persist a known token (`BaseURL: ilink.DefaultBaseURL`) and block on `Run`:
+
+```go
+err := session.RunToken(ctx, stateDir, accountID, token, handler)
+```
+
+`session.RunAccount` loads an already-persisted account (argument → `ILINK_ACCOUNT_ID` → the single stored id).
+`session.LoginAndRun` is `LoginQRStdin` + `Open` + `Run`.
+
+## Advanced
+
+### New(Options)
+
+For a custom `ilink.Client`, outbound policy, media store, or test HTTP injection:
+
+```go
+client := ilink.NewClient(ilink.Config{
+    BaseURL: ilink.DefaultBaseURL,
+    Token:   token,
+    HTTP:    httpDoer, // tests: FakeTransport
+})
+sess, err := session.New(session.Options{
+    AccountID: accountID,
+    Client:    client,
+    Store:     store,
+    HTTP:      httpDoer,
+    Handler:   handler,
+})
+_ = sess.Run(ctx)
+```
+
+Lower-level QR (same wire behavior as `LoginQR`): `auth.StartQR`, `auth.WaitLogin`, `auth.CompleteLogin`.
 
 Inject `http.RoundTripper` via `ilink.Config.HTTP` / `session.Options.HTTP` for tests.
 
@@ -124,7 +178,7 @@ Inject `http.RoundTripper` via `ilink.Config.HTTP` / `session.Options.HTTP` for 
 ## Test / build
 
 ```bash
-cd go/weixinbot
 go test ./... -count=1
 go test -race ./...   # when race detector available
+go build ./examples/echo ./examples/login-qr
 ```
